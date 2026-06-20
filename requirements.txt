@@ -1,0 +1,4 @@
+# HeatGuard core demo — no API key, no Anthropic required.
+# Live weather uses the Python stdlib (urllib) against Open-Meteo.
+fastapi
+uvicorn[standard]

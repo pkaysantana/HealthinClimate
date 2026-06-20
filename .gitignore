@@ -3,6 +3,14 @@ reference/
 incoming/
 *.zip
 
+# Secrets - never commit
+.env
+*.env
+.env.*
+
+# Live weather cache (regenerated at runtime)
+data/cached/*.json
+
 # Common generated/dependency folders
 node_modules/
 .venv/
