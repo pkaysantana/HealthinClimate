@@ -7,6 +7,7 @@ incoming/
 .env
 *.env
 .env.*
+!.env.example
 
 # Live weather cache (regenerated at runtime)
 data/cached/*.json
