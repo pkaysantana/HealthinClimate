@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HeatGuard — Work-Rest-Hydration Scheduler</title>
+<style>
+  :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { margin: 0; background: #0f172a; color: #e2e8f0; }
+  header { padding: 20px 24px; background: #1e293b; border-bottom: 1px solid #334155; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: #94a3b8; font-size: 13px; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tabs button { flex: 1; padding: 10px; border: 1px solid #334155; background: #0f172a; color: #cbd5e1; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .tabs button.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+  label { display: block; font-size: 12px; color: #94a3b8; margin: 12px 0 4px; }
+  select, input { width: 100%; box-sizing: border-box; padding: 9px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .check input { width: auto; }
+  .check label { margin: 0; }
+  .go { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .hidden { display: none; }
+  .result h2 { margin: 0 0 4px; font-size: 15px; color: #94a3b8; font-weight: 500; }
+  .wbgt { font-size: 44px; font-weight: 700; }
+  .flag { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; text-transform: uppercase; }
+  .flag.green { background:#16a34a; } .flag.yellow { background:#ca8a04; }
+  .flag.amber { background:#ea580c; } .flag.red { background:#dc2626; }
+  .flag.black { background:#111827; border:1px solid #6b7280; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  .stat { background:#0f172a; border:1px solid #334155; border-radius:8px; padding:12px; }
+  .stat .k { font-size:12px; color:#94a3b8; } .stat .v { font-size:20px; font-weight:600; }
+  .rec { margin-top:14px; padding:12px; background:#0f172a; border-radius:8px; font-size:14px; }
+  .src { margin-top:10px; font-size:12px; color:#64748b; }
+  .src .badge { padding:2px 8px; border-radius:6px; background:#334155; color:#cbd5e1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>HeatGuard</h1>
+  <p>Heat-stress work-rest-hydration scheduler · WBGT-based · live weather via Open-Meteo</p>
+</header>
+<main>
+  <div class="card">
+    <div class="tabs">
+      <button id="tab-live" class="active" onclick="setMode('live')">Live weather</button>
+      <button id="tab-manual" onclick="setMode('manual')">Manual entry</button>
+    </div>
+
+    <!-- LIVE -->
+    <div id="pane-live">
+      <label for="site">Site / city</label>
+      <select id="site"></select>
+    </div>
+
+    <!-- MANUAL -->
+    <div id="pane-manual" class="hidden">
+      <label for="wbgt">Measured WBGT (°C) — leave blank to estimate from weather below</label>
+      <input id="wbgt" type="number" step="0.1" placeholder="e.g. 30.5" />
+      <div class="row">
+        <div><label for="tdb">Air temp °C</label><input id="tdb" type="number" step="0.1" placeholder="43" /></div>
+        <div><label for="rh">Humidity %</label><input id="rh" type="number" step="1" placeholder="22" /></div>
+      </div>
+      <div class="row">
+        <div><label for="wind">Wind m/s</label><input id="wind" type="number" step="0.1" value="1.5" /></div>
+        <div><label for="solar">Solar W/m²</label><input id="solar" type="number" step="10" value="850" /></div>
+      </div>
+    </div>
+
+    <!-- SHARED -->
+    <div class="row">
+      <div>
+        <label for="intensity">Work intensity</label>
+        <select id="intensity">
+          <option value="light">Light</option>
+          <option value="moderate">Moderate</option>
+          <option value="heavy" selected>Heavy</option>
+          <option value="very_heavy">Very heavy</option>
+        </select>
+      </div>
+    </div>
+    <div class="check"><input id="acclimatized" type="checkbox" checked /><label for="acclimatized">Workers acclimatized to heat</label></div>
+    <div class="check"><input id="shade" type="checkbox" /><label for="shade">Work area is shaded</label></div>
+
+    <button class="go" onclick="assess()">Assess heat stress</button>
+  </div>
+
+  <div id="result" class="card result hidden"></div>
+</main>
+
+<script>
+let MODE = "live";
+
+function setMode(m) {
+  MODE = m;
+  document.getElementById("tab-live").classList.toggle("active", m === "live");
+  document.getElementById("tab-manual").classList.toggle("active", m === "manual");
+  document.getElementById("pane-live").classList.toggle("hidden", m !== "live");
+  document.getElementById("pane-manual").classList.toggle("hidden", m !== "manual");
+}
+
+async function loadSites() {
+  try {
+    const r = await fetch("/api/sites");
+    const { sites } = await r.json();
+    const sel = document.getElementById("site");
+    sel.innerHTML = sites.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
+  } catch (e) { console.error(e); }
+}
+
+function num(id) { const v = document.getElementById(id).value; return v === "" ? null : parseFloat(v); }
+
+async function assess() {
+  const intensity = document.getElementById("intensity").value;
+  const acclimatized = document.getElementById("acclimatized").checked;
+  const shade = document.getElementById("shade").checked;
+  const p = new URLSearchParams({ mode: MODE, intensity, acclimatized, shade });
+
+  if (MODE === "live") {
+    p.set("site", document.getElementById("site").value);
+  } else {
+    const wbgt = num("wbgt");
+    if (wbgt !== null) p.set("wbgt", wbgt);
+    else {
+      const tdb = num("tdb"), rh = num("rh");
+      if (tdb === null || rh === null) { alert("Enter a WBGT, or both air temp and humidity."); return; }
+      p.set("tdb", tdb); p.set("rh", rh);
+      p.set("wind", num("wind") ?? 1.5); p.set("solar", num("solar") ?? 0);
+    }
+  }
+
+  const r = await fetch("/api/assess?" + p.toString());
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  render(d);
+}
+
+function render(d) {
+  const el = document.getElementById("result");
+  el.classList.remove("hidden");
+  const w = d.weather;
+  let weatherLine = "";
+  if (w && w.tdb != null) {
+    weatherLine = `${w.tdb}°C · ${w.rh}% RH · wind ${w.wind_ms ?? "?"} m/s` +
+      (w.solar_wm2 != null ? ` · solar ${Math.round(w.solar_wm2)} W/m²` : "");
+  }
+  el.innerHTML = `
+    <h2>WBGT</h2>
+    <div class="wbgt">${d.wbgt_c}°C <span class="flag ${d.flag}">${d.flag}</span></div>
+    <div class="grid">
+      <div class="stat"><div class="k">Work / hour</div><div class="v">${d.work_minutes_per_hour} min</div></div>
+      <div class="stat"><div class="k">Rest / hour</div><div class="v">${d.rest_minutes_per_hour} min</div></div>
+      <div class="stat"><div class="k">Work allowed</div><div class="v">${d.work_pct}%</div></div>
+      <div class="stat"><div class="k">Hydration</div><div class="v">${d.hydration_l_per_hour} L/hr</div></div>
+    </div>
+    <div class="rec">${d.recommendation}</div>
+    <div class="src">${weatherLine ? weatherLine + " · " : ""}
+      source: <span class="badge">${d.wbgt_source}</span>
+      ${w && w.fallback_reason ? '<span class="badge" title="'+w.fallback_reason+'">fallback</span>' : ""}
+    </div>`;
+}
+
+loadSites();
+</script>
+</body>
+</html>

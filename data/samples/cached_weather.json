@@ -1,0 +1,11 @@
+{
+  "_note": "Offline fallback weather used only when Open-Meteo is unreachable. Represents a hot Gulf-summer midday.",
+  "observed_at": "2026-06-20T12:00",
+  "tdb": 43.0,
+  "rh": 22.0,
+  "wind_ms": 1.8,
+  "solar_wm2": 880.0,
+  "cloud_cover": 5,
+  "is_day": true,
+  "apparent_temp": 49.0
+}
